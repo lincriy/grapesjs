@@ -137,6 +137,7 @@ export default class CommandsModule extends Module<CommandsConfig & { pStylePref
 
     defaultCommands['tlb-move'] = {
       run(ed, s, opts = {}) {
+        console.log("tlb-move");
         let dragger;
         const em = ed.getModel();
         const { event } = opts;

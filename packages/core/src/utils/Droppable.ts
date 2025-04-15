@@ -128,6 +128,7 @@ export default class Droppable {
 
     // Select the right drag provider
     if (em.inAbsoluteMode()) {
+      console.log("droppable.js");
       const wrapper = em.Components.getWrapper()!;
       const target = wrapper.append({})[0];
       const dragger = em.Commands.run('core:component-drag', {

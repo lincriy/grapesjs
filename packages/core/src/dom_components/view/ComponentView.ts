@@ -54,6 +54,7 @@ TComp> {
   }
 
   initialize(opt: any = {}) {
+    console.log("componentview initialize");
     const model = this.model;
     const config = opt.config || {};
     const em = config.em;
@@ -85,6 +86,7 @@ TComp> {
     this.events = {
       ...(this.constructor as typeof ComponentView).getEvents(),
       dragstart: 'handleDragStart',
+      touchstart: 'handleTouchStart', // 新增 touchstart 事件
     };
     this.delegateEvents();
     !modelOpt.temporary && this.init(this._clbObj());
@@ -159,8 +161,28 @@ TComp> {
     // delete model.view; // Sorter relies on this property
     return this;
   }
+ // 处理 touchstart 事件
+  handleTouchStart(event: TouchEvent) {
+    if (!this.__isDraggable()) return false;
 
+    // 阻止默认行为（如页面滚动）
+    event.preventDefault();
+    event.stopPropagation();
+
+    // 确保是单点触控
+    if (event.touches.length !== 1) return;
+
+    // 模拟鼠标事件的拖拽逻辑
+    const touch = event.touches[0];
+    const simulatedEvent = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(simulatedEvent, 'clientX', { value: touch.clientX });
+    Object.defineProperty(simulatedEvent, 'clientY', { value: touch.clientY });
+
+    // 调用现有的拖拽处理逻辑
+    this.handleDragStart(simulatedEvent);
+  }
   handleDragStart(event: Event) {
+    console.log("componentview handledragstart");
     if (!this.__isDraggable()) return false;
     event.stopPropagation();
     event.preventDefault();

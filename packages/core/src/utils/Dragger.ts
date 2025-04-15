@@ -165,7 +165,9 @@ export default class Dragger {
     const win = this.getWindowEl();
     const method = enable ? 'on' : 'off';
     const methods = { on, off };
-    methods[method](container, 'mousemove dragover', this.drag);
+    // 添加 touch 事件监听
+    methods[method](container, 'mousemove dragover touchmove', this.drag);
+    // methods[method](container, 'mousemove dragover', this.drag);
     methods[method](docs, 'mouseup dragend touchend', this.stop);
     methods[method](docs, 'keydown', this.keyHandle);
     methods[method](win, 'scroll', this.handleScroll);
@@ -187,6 +189,7 @@ export default class Dragger {
    * @param  {Event} e
    */
   start(ev: Event) {
+    console.log("dragger.ts start method");
     const { opts } = this;
     const { onStart } = opts;
     this.toggleDrag(true);
@@ -205,9 +208,14 @@ export default class Dragger {
    * @param  {Event} event
    */
   drag(ev: Event) {
+    console.log('dragger.ts drag method');
     const { opts, lastScrollDiff, globScrollDiff } = this;
     const { onDrag } = opts;
     const { startPointer } = this;
+    // 阻止默认行为
+    // if (ev.type === 'touchmove') {
+    //   (ev as TouchEvent).preventDefault();
+    // }
     const currentPos = this.getPointerPos(ev);
     const glDiff = {
       x: globScrollDiff.x + lastScrollDiff.x,
@@ -250,9 +258,13 @@ export default class Dragger {
       const { newDelta, trgX, trgY } = this.snapGuides(deltaPre);
       (trgX || trgY) && moveDelta(newDelta);
     }
-
+    // 检查触摸结束（某些浏览器可能在 touchmove 中触发）
+    if ((ev as TouchEvent).touches?.length === 0) {
+      this.stop(ev);
+      return;
+    }
     // @ts-ignore In case the mouse button was released outside of the window
-    ev.which === 0 && this.stop(ev);
+    // ev.which === 0 && this.stop(ev);
   }
 
   /**
@@ -346,6 +358,7 @@ export default class Dragger {
    * Stop dragging
    */
   stop(ev: Event, opts: { cancel?: boolean } = {}) {
+    console.log("dragger.ts end method");
     const { delta } = this;
     const cancelled = !!opts.cancel;
     const x = cancelled ? 0 : delta.x;
@@ -427,14 +440,34 @@ export default class Dragger {
    */
   getPointerPos(ev: Event) {
     const getPos = this.opts.getPointerPosition;
-    const pEv = getPointerEvent(ev);
+    let pEv: MouseEvent | TouchEvent;
 
-    return getPos
-      ? getPos(ev)
-      : {
-          x: pEv.clientX,
-          y: pEv.clientY,
-        };
+    // return getPos
+    //   ? getPos(ev)
+    //   : {
+    //       x: pEv.clientX,
+    //       y: pEv.clientY,
+    //     };
+    if (ev.type.startsWith('touch')) {
+      pEv = ev as TouchEvent;
+      // 优先使用 changedTouches（触摸结束时使用），否则使用 touches
+      const touch = pEv.changedTouches?.[0] || pEv.touches?.[0];
+      if (!touch) return { x: 0, y: 0 };
+      return getPos
+        ? getPos(ev)
+        : {
+            x: touch.clientX,
+            y: touch.clientY,
+          };
+    } else {
+      pEv = getPointerEvent(ev) as MouseEvent;
+      return getPos
+        ? getPos(ev)
+        : {
+            x: pEv.clientX,
+            y: pEv.clientY,
+          };
+    }
   }
 
   getStartPosition() {

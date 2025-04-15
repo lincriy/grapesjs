@@ -11,6 +11,9 @@
         height: 100%;
         margin: 0;
       }
+      #gjs {
+          height: 80% !important;
+      }
     </style>
   </head>
 
@@ -29,7 +32,7 @@
         <div class="description">
           This is a demo content from index.html. For the development, you shouldn't edit this file, instead you can
           copy and rename it to _index.html, on next server start the new file will be served, and it will be ignored by
-          git.
+          git.123
         </div>
       </div>
       <style>
@@ -79,7 +82,12 @@
         }
       </style>
     </div>
-
+    <div class="elements-drawer" id="elements-drawer">
+						<!-- 元素抽屉内容由 RenderJS 填充 -->
+        </div>
+    <button onclick="changeDmode()">点我</button>
+<!--  <script src="touchSupport.js"></script>-->
+  <script src="DragDropTouch.js"></script>
     <script type="text/javascript">
       var editor = grapesjs.init({
         showOffsets: 1,
@@ -87,7 +95,18 @@
         container: '#gjs',
         height: '100%',
         fromElement: true,
+          dragMode: 'absolute', // 'absolute' | 'translate'
+
         storageManager: { autoload: 0 },
+        blockManager: {
+						custom: true,
+						blocks:[{
+              id: 'text',
+              label: 'Text',
+              content: '<div data-gjs-type="text">Insert your text here</div>',
+            },]
+					},
+        plugins: [touchOfficial],
         styleManager: {
           sectors: [
             {
@@ -149,12 +168,60 @@
           ],
         },
       });
-
       editor.BlockManager.add('testBlock', {
         label: 'Block',
         attributes: { class: 'gjs-fonts gjs-f-b1' },
         content: `<div style="padding-top:50px; padding-bottom:50px; text-align:center">Test block</div>`,
       });
+      editor.on('load', () => {
+					renderElementsDrawer(editor.BlockManager.getAll());
+				});
+      function renderElementsDrawer() {
+			  const drawer = document.getElementById('elements-drawer');
+			  if (!drawer) return console.error('未找到元素抽屉容器');
+			  drawer.innerHTML = '';
+			
+			  editor.BlockManager.getAll().forEach(block => {
+			    const blockItem = document.createElement('div');
+			    blockItem.className = 'element-item block';
+			    blockItem.setAttribute('data-from', 'blockmanager');
+			    blockItem.draggable = true; // Enable dragging
+			    blockItem.__block = block; // Store block reference
+			
+			    // Prevent default touch behavior to ensure plugin handles it
+			    // blockItem.addEventListener('touchstart', (e) => {
+			    //   e.stopPropagation();
+			    // });
+			
+			    // Fallback for desktop dragging
+			    blockItem.addEventListener('dragstart', (e) => {
+			      editor.BlockManager.startDrag(block);
+			      e.dataTransfer.setData('text/plain', block.id);
+			    });
+
+			    blockItem.addEventListener('dragend', () => {
+			      editor.BlockManager.endDrag();
+			    });
+
+			    const media = document.createElement('div');
+			    media.className = 'element-media';
+			    media.innerHTML = block.getMedia() || '';
+			    blockItem.appendChild(media);
+			
+			    const label = document.createElement('div');
+			    label.className = 'element-label';
+			    label.textContent = block.getLabel();
+			    blockItem.appendChild(label);
+			
+			    drawer.appendChild(blockItem);
+			  });
+			}
+      function changeDmode(){
+        if(editor.getModel().get("dmode") !== "absolute")
+          editor.getModel().set("dmode","absolute")
+        else
+          editor.getModel().set("dmode","translate")
+      }
     </script>
   </body>
 </html>

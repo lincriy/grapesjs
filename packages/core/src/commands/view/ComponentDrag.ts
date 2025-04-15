@@ -24,7 +24,7 @@ export default {
     );
 
     if (!opts.target) throw new Error('Target option is required');
-
+    console.log("component drag.ts");
     const config = {
       doc: opts.target.getEl()?.ownerDocument,
       onStart: this.onStart,
@@ -55,7 +55,12 @@ export default {
       drg.setOptions(config);
     }
 
-    opts.event && drg.start(opts.event);
+    // opts.event && drg.start(opts.event);
+     // 支持触摸事件
+    const eventType = opts.event?.type;
+    if (eventType?.startsWith('touch') || eventType === 'dragstart') {
+      opts.event && drg.start(opts.event);
+    }
     this.toggleDrag(true);
     this.em.trigger(`${evName}:start`, this.getEventOpts());
 

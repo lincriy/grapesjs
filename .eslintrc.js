@@ -48,7 +48,7 @@ module.exports = {
     '@typescript-eslint/no-unsafe-function-type': 'off',
     '@typescript-eslint/no-non-null-asserted-optional-chain': 'off',
     '@typescript-eslint/no-wrapper-object-types': 'off',
-    'linebreak-style': ['error', 'unix'],
+  "linebreak-style": ["error", "off"], // 或改为 "off" 关闭规则
     'max-len': ['error', { code: 300 }],
     'no-multiple-empty-lines': ['error', { max: 1, maxEOF: 1 }],
   },
