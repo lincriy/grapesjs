@@ -24,7 +24,7 @@ export default {
     );
 
     if (!opts.target) throw new Error('Target option is required');
-    console.log("component drag.ts");
+    console.log("componentdrag.ts");
     const config = {
       doc: opts.target.getEl()?.ownerDocument,
       onStart: this.onStart,

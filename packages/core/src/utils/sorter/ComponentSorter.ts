@@ -91,7 +91,7 @@ export default class ComponentSorter<NodeType extends BaseComponentNode> extends
     if (canvasScroll) this.recalculateTargetOnScroll();
   }
 
-  private onMouseMove = (mouseEvent: MouseEvent) => {
+  private onMouseMove = (mouseEvent: MouseEvent | TouchEvent) => {
     const insertingTextableIntoText = this.targetIsText && this.sourceNodes?.some((node) => node.isTextable());
     if (insertingTextableIntoText) {
       this.updateTextViewCursorPosition(mouseEvent);

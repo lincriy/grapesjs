@@ -38,7 +38,7 @@ export enum DragDirection {
   BothDirections = 'BothDirections',
 }
 
-export type CustomTarget = ({ event }: { event: MouseEvent }) => HTMLElement | null;
+export type CustomTarget = ({ event }: { event: MouseEvent | TouchEvent }) => HTMLElement | null;
 
 export interface SorterContainerContext {
   container: HTMLElement;
@@ -72,8 +72,8 @@ type OnStartSortHandler<NodeType> = (sourceNodes: NodeType[], container?: HTMLEl
  *
  * @param mouseEvent The mouse event associated with the drag start.
  */
-type OnDragStartHandler = (mouseEvent: MouseEvent) => void;
-type OnMouseMoveHandler = (mouseEvent: MouseEvent) => void;
+type OnDragStartHandler = (mouseEvent: MouseEvent | TouchEvent) => void;
+type OnMouseMoveHandler = (mouseEvent: MouseEvent | TouchEvent) => void;
 type OnDropHandler<NodeType> = (
   targetNode: NodeType | undefined,
   sourceNodes: NodeType[],

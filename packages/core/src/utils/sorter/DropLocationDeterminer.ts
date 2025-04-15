@@ -29,18 +29,26 @@ interface DropLocationDeterminerOptions<T, NodeType extends SortableTreeNode<T>>
  * Represents the data related to the last move event during drag-and-drop sorting.
  * This type is discriminated by the presence or absence of a valid target node.
  */
+// type lastMoveData<NodeType> = {
+//   /** The target node under the mouse pointer during the last move. */
+//   targetNode?: NodeType;
+//   /** The node under the mouse pointer during this move*/
+//   hoveredNode?: NodeType;
+//   /** The index where the placeholder or dragged element should be inserted. */
+//   index?: number;
+//   /** Placement relative to the target ('before' or 'after'). */
+//   placement?: Placement;
+//   /** The mouse event, used if we want to move placeholder with scrolling. */
+//   mouseEvent?: MouseEvent;
+//
+//   placeholderDimensions?: Dimension;
+// };
 type lastMoveData<NodeType> = {
-  /** The target node under the mouse pointer during the last move. */
   targetNode?: NodeType;
-  /** The node under the mouse pointer during this move*/
   hoveredNode?: NodeType;
-  /** The index where the placeholder or dragged element should be inserted. */
   index?: number;
-  /** Placement relative to the target ('before' or 'after'). */
   placement?: Placement;
-  /** The mouse event, used if we want to move placeholder with scrolling. */
-  mouseEvent?: MouseEvent;
-
+  mouseEvent?: MouseEvent | TouchEvent; // Allow both event types
   placeholderDimensions?: Dimension;
 };
 
@@ -60,7 +68,7 @@ export class DropLocationDeterminer<T, NodeType extends SortableTreeNode<T>> ext
     left: 0,
   };
   private moveThreshold: number = 20;
-  private rateLimiter: RateLimiter<MouseEvent>; // Rate limiter for onMove
+  private rateLimiter: RateLimiter<MouseEvent | TouchEvent>; // Rate limiter for onMove
 
   constructor(options: DropLocationDeterminerOptions<T, NodeType>) {
     super();
@@ -87,7 +95,7 @@ export class DropLocationDeterminer<T, NodeType extends SortableTreeNode<T>> ext
 
   private bindDragEventHandlers() {
     on(this.containerContext.container, 'dragstart', this.onDragStart);
-    on(this.containerContext.container, 'mousemove dragover', this.onMove);
+    on(this.containerContext.container, 'mousemove dragover touchmove', this.onMove);
     on(this.containerContext.document, 'mouseup dragend touchend', this.endDrag);
   }
 
@@ -106,30 +114,41 @@ export class DropLocationDeterminer<T, NodeType extends SortableTreeNode<T>> ext
     this.onMove(lastMouseEvent);
   }
 
-  private onMove(mouseEvent: MouseEvent): void {
-    this.rateLimiter.updateArgs(mouseEvent);
+  private onMove(event: MouseEvent | TouchEvent): void {
+    console.log('DropLocationDeterminer.ts');
+
+    // Prevent default behavior for touch events to avoid scrolling
+    if (event.type === 'touchmove') {
+      event.preventDefault();
+    }
+
+    this.rateLimiter.updateArgs(event);
     this.rateLimiter.execute(this.handleMove.bind(this));
   }
 
-  private handleMove(mouseEvent: MouseEvent): void {
+  private handleMove(event: MouseEvent | TouchEvent): void {
     this.adjustForScroll();
 
     const { targetNode: lastTargetNode } = this.lastMoveData;
-    this.eventHandlers.onMouseMove?.(mouseEvent);
+    this.eventHandlers.onMouseMove?.(event);
+
+    // Extract clientX and clientY from MouseEvent or TouchEvent
+var isTouchEvent = 'touches' in event && event.touches.length > 0;
+    var clientX = isTouchEvent ? (event as TouchEvent).touches[0].clientX : (event as MouseEvent).clientX;
+    var clientY = isTouchEvent ? (event as TouchEvent).touches[0].clientY : (event as MouseEvent).clientY;
     const { mouseXRelative: mouseX, mouseYRelative: mouseY } = this.getMousePositionRelativeToContainer(
-      mouseEvent.clientX,
-      mouseEvent.clientY,
+      clientX,
+      clientY,
     );
-    const targetNode = this.getTargetNode(mouseEvent);
+    const targetNode = this.getTargetNode(event);
     const targetChanged = !targetNode?.equals(lastTargetNode);
     if (targetChanged) {
       this.eventHandlers.onTargetChange?.(lastTargetNode, targetNode);
     }
     if (!targetNode) {
-      this.triggerLegacyOnMoveCallback(mouseEvent, 0);
+      this.triggerLegacyOnMoveCallback(event, 0);
       this.triggerMoveEvent(mouseX, mouseY);
       this.restLastMoveData();
-
       return;
     }
 
@@ -146,14 +165,14 @@ export class DropLocationDeterminer<T, NodeType extends SortableTreeNode<T>> ext
     this.lastMoveData = {
       ...this.lastMoveData,
       targetNode,
-      mouseEvent,
+      mouseEvent: event instanceof MouseEvent ? event : undefined, // Store MouseEvent only
       index,
       placement,
       placeholderDimensions,
     };
 
     this.triggerMoveEvent(mouseX, mouseY);
-    this.triggerLegacyOnMoveCallback(mouseEvent, index);
+    this.triggerLegacyOnMoveCallback(event, index);
   }
 
   private adjustForScroll() {
@@ -185,11 +204,11 @@ export class DropLocationDeterminer<T, NodeType extends SortableTreeNode<T>> ext
     };
   }
 
-  private triggerLegacyOnMoveCallback(mouseEvent: MouseEvent, index?: number) {
+  private triggerLegacyOnMoveCallback(event: MouseEvent | TouchEvent, index?: number) {
     // For backward compatibility, leave it to a single node
     const model = this.sourceNodes[0]?.model;
     this.eventHandlers.legacyOnMoveClb?.({
-      event: mouseEvent,
+      event,
       target: model,
       parent: this.lastMoveData.targetNode?.model,
       index: index,
@@ -257,15 +276,15 @@ export class DropLocationDeterminer<T, NodeType extends SortableTreeNode<T>> ext
    * @param mouseEvent - The mouse event containing the cursor position and target element.
    * @returns The target node if a valid one is found, otherwise undefined.
    */
-  private getTargetNode(mouseEvent: MouseEvent): NodeType | undefined {
+  private getTargetNode(event: MouseEvent | TouchEvent): NodeType | undefined {
     this.cacheContainerPosition(this.containerContext.container);
-    const { mouseXRelative, mouseYRelative } = this.getMousePositionRelativeToContainer(
-      mouseEvent.clientX,
-      mouseEvent.clientY,
-    );
+var isTouchEvent = 'touches' in event && event.touches.length > 0;
+    var clientX = isTouchEvent ? (event as TouchEvent).touches[0].clientX : (event as MouseEvent).clientX;
+    var clientY = isTouchEvent ? (event as TouchEvent).touches[0].clientY : (event as MouseEvent).clientY;
+    const { mouseXRelative, mouseYRelative } = this.getMousePositionRelativeToContainer(clientX, clientY);
 
-    // Get the element under the mouse
-    const mouseTargetEl = this.getMouseTargetElement(mouseEvent);
+    // Get the element under the touch/mouse
+    const mouseTargetEl = this.getMouseTargetElement(event);
     const targetEl = this.getFirstElementWithAModel(mouseTargetEl);
     if (!targetEl) return;
     const hoveredModel = $(targetEl)?.data('model');
@@ -273,7 +292,7 @@ export class DropLocationDeterminer<T, NodeType extends SortableTreeNode<T>> ext
 
     let hoveredNode = this.getOrCreateHoveredNode(hoveredModel);
 
-    // Get the drop position index based on the mouse position
+    // Get the drop position index based on the mouse/touch position
     const { index } = this.getDropPosition(hoveredNode, mouseXRelative, mouseYRelative);
 
     // Determine the valid target node (or its valid parent)
@@ -308,13 +327,13 @@ export class DropLocationDeterminer<T, NodeType extends SortableTreeNode<T>> ext
     return targetNode?.equals(lastTargetNode) ? lastTargetNode : targetNode;
   }
 
-  private getMouseTargetElement(mouseEvent: MouseEvent) {
+  private getMouseTargetElement(event: MouseEvent | TouchEvent) {
     const customTarget = this.containerContext.customTarget;
-    let mouseTarget = this.containerContext.document.elementFromPoint(
-      mouseEvent.clientX,
-      mouseEvent.clientY,
-    ) as HTMLElement;
-    let mouseTargetEl: HTMLElement | null = customTarget ? customTarget({ event: mouseEvent }) : mouseTarget;
+var isTouchEvent = 'touches' in event && event.touches.length > 0;
+    var clientX = isTouchEvent ? (event as TouchEvent).touches[0].clientX : (event as MouseEvent).clientX;
+    var clientY = isTouchEvent ? (event as TouchEvent).touches[0].clientY : (event as MouseEvent).clientY;
+    let mouseTarget = this.containerContext.document.elementFromPoint(clientX, clientY) as HTMLElement;
+    let mouseTargetEl: HTMLElement | null = customTarget ? customTarget({ event }) : mouseTarget;
 
     return mouseTargetEl;
   }
@@ -458,7 +477,7 @@ export class DropLocationDeterminer<T, NodeType extends SortableTreeNode<T>> ext
   private cleanupEventListeners(): void {
     const container = this.containerContext.container;
     off(container, 'dragstart', this.onDragStart);
-    off(container, 'mousemove dragover', this.onMove);
+    off(container, 'mousemove dragover touchmove', this.onMove);
     off(this.containerContext.document, 'mouseup dragend touchend', this.endDrag);
   }
 
