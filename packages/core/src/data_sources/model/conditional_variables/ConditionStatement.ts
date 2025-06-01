@@ -1,10 +1,10 @@
-import { Operator } from './operators/BaseOperator';
-import { DataConditionOperation } from './operators/types';
+import { SimpleOperator } from './operators/BaseOperator';
+import { DataConditionSimpleOperation } from './types';
 
 export class ConditionStatement {
   constructor(
     private leftValue: any,
-    private operator: Operator<DataConditionOperation>,
+    private operator: SimpleOperator<DataConditionSimpleOperation>,
     private rightValue: any,
   ) {}
 

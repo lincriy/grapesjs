@@ -1,5 +1,17 @@
 import Component from '../../dom_components/model/Component';
+import ComponentView from '../../dom_components/view/ComponentView';
+import Editor from '../../editor';
 import { CanvasSpotBuiltInTypes } from '../model/CanvasSpot';
+import Frame from '../model/Frame';
+import FrameView from '../view/FrameView';
+
+export interface CustomRendererProps {
+  editor: Editor;
+  frame: Frame;
+  window: Window;
+  frameView: FrameView;
+  onMount: (view: ComponentView) => void;
+}
 
 export interface CanvasConfig {
   stylePrefix?: string;
@@ -102,6 +114,19 @@ export interface CanvasConfig {
    * @default false
    */
   scrollableCanvas?: boolean;
+
+  /**
+   * Custom renderer function for canvas content.
+   * This allows replacing the default HTML rendering with custom frameworks like React.
+   * @example
+   * customRenderer: ({ editor, frame, window, frameView }) => {
+   *   // Mount React on the frame body
+   *   const root = frame.getComponent();
+   *   const reactRoot = createRoot(window.document.body);
+   *   reactRoot.render(<React.StrictMode><RenderChildren components={[root]}/></React.StrictMode>);
+   * }
+   */
+  customRenderer?: (props: CustomRendererProps) => void;
 }
 
 const config: () => CanvasConfig = () => ({

@@ -1,4 +1,4 @@
-import { bindAll, isArray } from 'underscore';
+import { isArray } from 'underscore';
 import { ObjectAny } from '../../../common';
 import Component, { keySymbol } from '../../../dom_components/model/Component';
 import { ComponentAddType, ComponentDefinitionDefined, ComponentOptions } from '../../../dom_components/model/types';
@@ -8,25 +8,21 @@ import DataResolverListener from '../DataResolverListener';
 import DataSource from '../DataSource';
 import DataVariable, { DataVariableProps, DataVariableType } from '../DataVariable';
 import { isDataVariable } from '../../utils';
-import {
-  DataCollectionItemType,
-  DataCollectionType,
-  keyCollectionDefinition,
-  keyCollectionsStateMap,
-  keyIsCollectionItem,
-} from './constants';
+import { DataCollectionItemType, DataCollectionType, keyCollectionDefinition } from './constants';
 import {
   ComponentDataCollectionProps,
   DataCollectionDataSource,
   DataCollectionProps,
-  DataCollectionState,
   DataCollectionStateMap,
 } from './types';
-import { getSymbolsToUpdate } from '../../../dom_components/model/SymbolUtils';
-import { StyleProps, UpdateStyleOptions } from '../../../domain_abstract/model/StyleableModel';
+import { detachSymbolInstance, getSymbolInstances } from '../../../dom_components/model/SymbolUtils';
 import { updateFromWatcher } from '../../../dom_components/model/ComponentDataResolverWatchers';
+import { ModelDestroyOptions } from 'backbone';
+import Components from '../../../dom_components/model/Components';
 
 const AvoidStoreOptions = { avoidStore: true, partial: true };
+type DataVariableMap = Record<string, DataVariableProps>;
+
 export default class ComponentDataCollection extends Component {
   dataSourceWatcher?: DataResolverListener;
 
@@ -35,6 +31,7 @@ export default class ComponentDataCollection extends Component {
       // @ts-ignore
       ...super.defaults,
       droppable: false,
+      dataResolver: {},
       type: DataCollectionType,
       components: [
         {
@@ -45,33 +42,30 @@ export default class ComponentDataCollection extends Component {
   }
 
   constructor(props: ComponentDataCollectionProps, opt: ComponentOptions) {
-    const dataResolver = props[keyCollectionDefinition];
-
     if (opt.forCloning) {
       return super(props as any, opt) as unknown as ComponentDataCollection;
     }
 
-    const em = opt.em;
     const newProps = { ...props, droppable: false } as any;
     const cmp: ComponentDataCollection = super(newProps, opt) as unknown as ComponentDataCollection;
-    if (!dataResolver) {
-      em.logError('missing collection definition');
-      return cmp;
-    }
-
-    bindAll(this, 'rebuildChildrenFromCollection');
-    this.listenTo(this, `change:${keyCollectionDefinition}`, this.rebuildChildrenFromCollection);
+    this.rebuildChildrenFromCollection = this.rebuildChildrenFromCollection.bind(this);
+    this.listenToPropsChange();
     this.rebuildChildrenFromCollection();
-    this.listenToDataSource();
 
     return cmp;
   }
 
+  getDataResolver() {
+    return this.get('dataResolver');
+  }
+
   getItemsCount() {
     const items = this.getDataSourceItems();
+    const itemsCount = getLength(items);
+
     const startIndex = Math.max(0, this.getConfigStartIndex() ?? 0);
     const configEndIndex = this.getConfigEndIndex() ?? Number.MAX_VALUE;
-    const endIndex = Math.min(items.length - 1, configEndIndex);
+    const endIndex = Math.min(itemsCount - 1, configEndIndex);
 
     const count = endIndex - startIndex + 1;
     return Math.max(0, count);
@@ -97,6 +91,10 @@ export default class ComponentDataCollection extends Component {
     return this.firstChild.components();
   }
 
+  setDataResolver(props: DataCollectionProps) {
+    return this.set('dataResolver', props);
+  }
+
   setCollectionId(collectionId: string) {
     this.updateCollectionConfig({ collectionId });
   }
@@ -114,13 +112,6 @@ export default class ComponentDataCollection extends Component {
     this.updateCollectionConfig({ endIndex });
   }
 
-  private updateCollectionConfig(updates: Partial<DataCollectionProps>): void {
-    this.set(keyCollectionDefinition, {
-      ...this.dataResolver,
-      ...updates,
-    });
-  }
-
   setDataSource(dataSource: DataCollectionDataSource) {
     this.set(keyCollectionDefinition, {
       ...this.dataResolver,
@@ -136,12 +127,22 @@ export default class ComponentDataCollection extends Component {
     return this.components().at(0);
   }
 
-  private getDataSourceItems() {
-    return getDataSourceItems(this.dataResolver.dataSource, this.em);
+  private updateCollectionConfig(updates: Partial<DataCollectionProps>): void {
+    this.set(keyCollectionDefinition, {
+      ...this.dataResolver,
+      ...updates,
+    });
   }
 
-  private getCollectionStateMap() {
-    return (this.get(keyCollectionsStateMap) || {}) as DataCollectionStateMap;
+  private getDataSourceItems() {
+    const items = getDataSourceItems(this.dataResolver.dataSource, this.em);
+    if (isArray(items)) {
+      return items;
+    }
+
+    const clone = { ...items };
+    delete clone['__p'];
+    return clone;
   }
 
   private get dataResolver() {
@@ -160,7 +161,7 @@ export default class ComponentDataCollection extends Component {
       em,
       resolver: new DataVariable(
         { type: DataVariableType, path },
-        { em, collectionsStateMap: this.get(keyCollectionsStateMap) },
+        { em, collectionsStateMap: this.collectionsStateMap },
       ),
       onUpdate: this.rebuildChildrenFromCollection,
     });
@@ -172,6 +173,9 @@ export default class ComponentDataCollection extends Component {
 
   private getCollectionItems() {
     const firstChild = this.ensureFirstChild();
+    const displayStyle = firstChild.getStyle()['display'];
+    const isDisplayNoneOrMissing = !displayStyle || displayStyle === 'none';
+    const resolvedDisplay = isDisplayNoneOrMissing ? '' : displayStyle;
     // TODO: Move to component view
     firstChild.addStyle({ display: 'none' }, AvoidStoreOptions);
     const components: Component[] = [firstChild];
@@ -181,15 +185,12 @@ export default class ComponentDataCollection extends Component {
       return components;
     }
 
-    const collectionId = this.dataResolver.collectionId;
+    const collectionId = this.collectionId;
     const items = this.getDataSourceItems();
+    const { startIndex, endIndex } = this.resolveCollectionConfig(items);
 
-    const startIndex = this.getConfigStartIndex() ?? 0;
-    const configEndIndex = this.getConfigEndIndex() ?? Number.MAX_VALUE;
-    const endIndex = Math.min(items.length - 1, configEndIndex);
-    const totalItems = endIndex - startIndex + 1;
-    const parentCollectionStateMap = this.getCollectionStateMap();
-    if (parentCollectionStateMap[collectionId]) {
+    const isDuplicatedId = this.hasDuplicateCollectionId();
+    if (isDuplicatedId) {
       this.em.logError(
         `The collection ID "${collectionId}" already exists in the parent collection state. Overriding it is not allowed.`,
       );
@@ -198,38 +199,78 @@ export default class ComponentDataCollection extends Component {
     }
 
     for (let index = startIndex; index <= endIndex; index++) {
-      const item = items[index];
       const isFirstItem = index === startIndex;
-      const collectionState: DataCollectionState = {
-        collectionId,
-        currentIndex: index,
-        currentItem: item,
-        startIndex: startIndex,
-        endIndex: endIndex,
-        totalItems: totalItems,
-        remainingItems: totalItems - (index + 1),
-      };
-
-      const collectionsStateMap: DataCollectionStateMap = {
-        ...parentCollectionStateMap,
-        [collectionId]: collectionState,
-      };
+      const key = isArray(items) ? index : Object.keys(items)[index];
+      const collectionsStateMap = this.getCollectionsStateMapForItem(items, key);
 
       if (isFirstItem) {
-        setCollectionStateMapAndPropagate(firstChild, collectionsStateMap, collectionId);
+        getSymbolInstances(firstChild)?.forEach((cmp) => detachSymbolInstance(cmp));
+
+        setCollectionStateMapAndPropagate(firstChild, collectionsStateMap);
         // TODO: Move to component view
-        firstChild.addStyle({ display: '' }, AvoidStoreOptions);
+        firstChild.addStyle({ display: resolvedDisplay }, AvoidStoreOptions);
 
         continue;
       }
 
-      const instance = firstChild!.clone({ symbol: true });
-      instance.set('locked', true, AvoidStoreOptions);
-      setCollectionStateMapAndPropagate(instance, collectionsStateMap, collectionId);
+      const instance = firstChild!.clone({ symbol: true, symbolInv: true });
+      instance.set({ locked: true, layerable: false }, AvoidStoreOptions);
+      setCollectionStateMapAndPropagate(instance, collectionsStateMap);
       components.push(instance);
     }
 
     return components;
+  }
+
+  private getCollectionsStateMapForItem(items: DataVariableProps[] | DataVariableMap, key: number | string) {
+    const { startIndex, endIndex, totalItems } = this.resolveCollectionConfig(items);
+    const collectionId = this.collectionId;
+    let item: DataVariableProps = (items as any)[key];
+    const parentCollectionStateMap = this.collectionsStateMap;
+
+    const numericKey = typeof key === 'string' ? Object.keys(items).indexOf(key) : key;
+    const offset = numericKey - startIndex;
+    const remainingItems = totalItems - (1 + offset);
+    const collectionState = {
+      collectionId,
+      currentIndex: numericKey,
+      currentItem: item,
+      currentKey: key,
+      startIndex,
+      endIndex,
+      totalItems,
+      remainingItems,
+    };
+
+    const collectionsStateMap: DataCollectionStateMap = {
+      ...parentCollectionStateMap,
+      [collectionId]: collectionState,
+    };
+
+    return collectionsStateMap;
+  }
+
+  private hasDuplicateCollectionId() {
+    const collectionId = this.collectionId;
+    const parentCollectionStateMap = this.collectionsStateMap;
+
+    return !!parentCollectionStateMap[collectionId];
+  }
+
+  private resolveCollectionConfig(items: DataVariableProps[] | DataVariableMap) {
+    const isArray = Array.isArray(items);
+    const actualItemCount = isArray ? items.length : Object.keys(items).length;
+
+    const startIndex = this.getConfigStartIndex() ?? 0;
+    const configEndIndex = this.getConfigEndIndex() ?? Number.MAX_VALUE;
+    const endIndex = Math.min(actualItemCount - 1, configEndIndex);
+
+    let totalItems = 0;
+    if (actualItemCount > 0) {
+      totalItems = Math.max(0, endIndex - startIndex + 1);
+    }
+
+    return { startIndex, endIndex, totalItems, isArray };
   }
 
   private ensureFirstChild() {
@@ -246,6 +287,51 @@ export default class ComponentDataCollection extends Component {
     );
   }
 
+  private listenToPropsChange() {
+    this.on(`change:${keyCollectionDefinition}`, () => {
+      this.rebuildChildrenFromCollection();
+      this.listenToDataSource();
+    });
+    this.listenToDataSource();
+  }
+
+  private removePropsListeners() {
+    this.off(`change:${keyCollectionDefinition}`);
+    this.dataSourceWatcher?.destroy();
+  }
+
+  onCollectionsStateMapUpdate(collectionsStateMap: DataCollectionStateMap) {
+    this.collectionsStateMap = collectionsStateMap;
+    this.dataResolverWatchers.onCollectionsStateMapUpdate();
+
+    const items = this.getDataSourceItems();
+    const { startIndex } = this.resolveCollectionConfig(items);
+    const cmps = this.components();
+    cmps.forEach((cmp, index) => {
+      const collectionsStateMap = this.getCollectionsStateMapForItem(items, startIndex + index);
+      cmp.onCollectionsStateMapUpdate(collectionsStateMap);
+    });
+  }
+
+  stopSyncComponentCollectionState() {
+    this.stopListening(this.components(), 'add remove reset', this.syncOnComponentChange);
+    this.onCollectionsStateMapUpdate({});
+  }
+
+  syncOnComponentChange(model: Component, collection: Components, opts: any) {
+    const collectionsStateMap = this.collectionsStateMap;
+    // Avoid assigning wrong collectionsStateMap value to children components
+    this.collectionsStateMap = {};
+
+    super.syncOnComponentChange(model, collection, opts);
+    this.collectionsStateMap = collectionsStateMap;
+    this.onCollectionsStateMapUpdate(collectionsStateMap);
+  }
+
+  private get collectionId() {
+    return this.getDataResolver().collectionId as string;
+  }
+
   static isComponent(el: HTMLElement) {
     return toLowerCase(el.tagName) === DataCollectionType;
   }
@@ -259,66 +345,21 @@ export default class ComponentDataCollection extends Component {
     const firstChild = this.firstChild as any;
     return { ...json, components: [firstChild] };
   }
+
+  destroy(options?: ModelDestroyOptions | undefined): false | JQueryXHR {
+    this.removePropsListeners();
+    return super.destroy(options);
+  }
 }
 
-function applyToComponentAndChildren(operation: (cmp: Component) => void, component: Component) {
-  operation(component);
-
-  component.components().forEach((child) => {
-    applyToComponentAndChildren(operation, child);
-  });
+function getLength(items: DataVariableProps[] | object) {
+  return isArray(items) ? items.length : Object.keys(items).length;
 }
 
-function setCollectionStateMapAndPropagate(
-  cmp: Component,
-  collectionsStateMap: DataCollectionStateMap,
-  collectionId: string,
-) {
-  applyToComponentAndChildren(() => {
-    setCollectionStateMap(collectionsStateMap)(cmp);
-
-    const addListener = (component: Component) => {
-      setCollectionStateMapAndPropagate(component, collectionsStateMap, collectionId);
-    };
-
-    const listenerKey = `_hasAddListener${collectionId ? `_${collectionId}` : ''}`;
-    const cmps = cmp.components();
-
-    if (!cmp.collectionStateListeners.includes(listenerKey)) {
-      cmp.listenTo(cmps, 'add', addListener);
-      cmp.collectionStateListeners.push(listenerKey);
-
-      const removeListener = (component: Component) => {
-        component.stopListening(component.components(), 'add', addListener);
-        component.off(`change:${keyCollectionsStateMap}`, handleCollectionStateMapChange);
-        const index = component.collectionStateListeners.indexOf(listenerKey);
-        if (index !== -1) {
-          component.collectionStateListeners.splice(index, 1);
-        }
-
-        const collectionsStateMap = component.get(keyCollectionsStateMap);
-        component.set(keyCollectionsStateMap, {
-          ...collectionsStateMap,
-          [collectionId]: undefined,
-        });
-      };
-
-      cmp.listenTo(cmps, 'remove', removeListener);
-    }
-
-    cmps.forEach((cmp) => setCollectionStateMapAndPropagate(cmp, collectionsStateMap, collectionId));
-
-    cmp.on(`change:${keyCollectionsStateMap}`, handleCollectionStateMapChange);
-  }, cmp);
-}
-
-function handleCollectionStateMapChange(this: Component) {
-  const updatedCollectionsStateMap = this.get(keyCollectionsStateMap);
-  this.components()
-    ?.toArray()
-    .forEach((component: Component) => {
-      setCollectionStateMap(updatedCollectionsStateMap)(component);
-    });
+function setCollectionStateMapAndPropagate(cmp: Component, collectionsStateMap: DataCollectionStateMap) {
+  cmp.setSymbolOverride(['locked', 'layerable']);
+  cmp.syncComponentsCollectionState();
+  cmp.onCollectionsStateMapUpdate(collectionsStateMap);
 }
 
 function logErrorIfMissing(property: any, propertyPath: string, em: EditorModel) {
@@ -350,68 +391,28 @@ function validateCollectionDef(dataResolver: DataCollectionProps, em: EditorMode
   return true;
 }
 
-function setCollectionStateMap(collectionsStateMap: DataCollectionStateMap) {
-  return (cmp: Component) => {
-    cmp.set(keyIsCollectionItem, true);
-    const updatedCollectionStateMap = {
-      ...cmp.get(keyCollectionsStateMap),
-      ...collectionsStateMap,
-    };
-    cmp.set(keyCollectionsStateMap, updatedCollectionStateMap);
-    cmp.dataResolverWatchers.updateCollectionStateMap(updatedCollectionStateMap);
-
-    const parentCollectionsId = Object.keys(updatedCollectionStateMap);
-    const isFirstItem = parentCollectionsId.every(
-      (key) => updatedCollectionStateMap[key].currentIndex === updatedCollectionStateMap[key].startIndex,
-    );
-
-    if (isFirstItem) {
-      const __onStyleChange = cmp.__onStyleChange.bind(cmp);
-
-      cmp.__onStyleChange = (newStyles: StyleProps, opts: UpdateStyleOptions = {}) => {
-        __onStyleChange(newStyles);
-        const cmps = getSymbolsToUpdate(cmp);
-
-        cmps.forEach((cmp) => {
-          cmp.addStyle(newStyles, opts);
-        });
-      };
-
-      cmp.on(`change:${keyIsCollectionItem}`, () => {
-        cmp.__onStyleChange = __onStyleChange;
-      });
-    }
-  };
-}
-
-function getDataSourceItems(dataSource: DataCollectionDataSource, em: EditorModel) {
-  let items: DataVariableProps[] = [];
-
+function getDataSourceItems(
+  dataSource: DataCollectionDataSource,
+  em: EditorModel,
+): DataVariableProps[] | DataVariableMap {
   switch (true) {
-    case isArray(dataSource):
-      items = dataSource;
-      break;
     case isObject(dataSource) && dataSource instanceof DataSource: {
       const id = dataSource.get('id')!;
-      items = listDataSourceVariables(id, em);
-      break;
+      return listDataSourceVariables(id, em);
     }
     case isDataVariable(dataSource): {
       const path = dataSource.path;
-      if (!path) break;
+      if (!path) return [];
       const isDataSourceId = path.split('.').length === 1;
       if (isDataSourceId) {
-        items = listDataSourceVariables(path, em);
+        return listDataSourceVariables(path, em);
       } else {
-        items = em.DataSources.getValue(path, []);
+        return em.DataSources.getValue(path, []);
       }
-      break;
     }
     default:
-      break;
+      return [];
   }
-
-  return items;
 }
 
 function listDataSourceVariables(dataSource_id: string, em: EditorModel): DataVariableProps[] {

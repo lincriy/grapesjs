@@ -1,13 +1,14 @@
 import EditorModel from '../editor/model/Editor';
-import { DataResolver, DataResolverProps } from './types';
+import { DataResolver, DataResolverProps, ResolverFromProps } from './types';
 import { DataCollectionStateMap } from './model/data_collection/types';
 import { DataCollectionItemType } from './model/data_collection/constants';
 import { DataConditionType, DataCondition } from './model/conditional_variables/DataCondition';
 import DataVariable, { DataVariableProps, DataVariableType } from './model/DataVariable';
-import Component from '../dom_components/model/Component';
 import { ComponentDefinition, ComponentOptions } from '../dom_components/model/types';
 import { serialize } from '../utils/mixins';
 import { DataConditionIfFalseType, DataConditionIfTrueType } from './model/conditional_variables/constants';
+import { getSymbolMain } from '../dom_components/model/SymbolUtils';
+import Component from '../dom_components/model/Component';
 
 export function isDataResolverProps(value: any): value is DataResolverProps {
   return typeof value === 'object' && [DataVariableType, DataConditionType].includes(value?.type);
@@ -25,16 +26,17 @@ export function isDataCondition(variable: any) {
   return variable?.type === DataConditionType;
 }
 
-export function resolveDynamicValue(variable: any, em: EditorModel) {
-  return isDataResolverProps(variable)
-    ? getDataResolverInstanceValue(variable, { em, collectionsStateMap: {} })
-    : variable;
+export function valueOrResolve(variable: any, opts: { em: EditorModel; collectionsStateMap: DataCollectionStateMap }) {
+  if (!isDataResolverProps(variable)) return variable;
+  if (isDataVariable(variable)) DataVariable.resolveDataResolver(variable, opts);
+
+  return getDataResolverInstanceValue(variable, opts);
 }
 
 export function getDataResolverInstance(
   resolverProps: DataResolverProps,
   options: { em: EditorModel; collectionsStateMap: DataCollectionStateMap },
-) {
+): ResolverFromProps<typeof resolverProps> | undefined {
   const { type } = resolverProps;
   let resolver: DataResolver;
 
@@ -47,7 +49,7 @@ export function getDataResolverInstance(
       break;
     }
     default:
-      options.em?.logError(`Unsupported dynamic type: ${type}`);
+      options.em?.logWarning(`Unsupported dynamic type: ${type}`);
       return;
   }
 
@@ -83,3 +85,39 @@ export const ensureComponentInstance = (
 export const isComponentDataOutputType = (type: string | undefined) => {
   return !!type && [DataCollectionItemType, DataConditionIfTrueType, DataConditionIfFalseType].includes(type);
 };
+
+export function enumToArray(enumObj: any) {
+  return Object.keys(enumObj)
+    .filter((key) => isNaN(Number(key)))
+    .map((key) => enumObj[key]);
+}
+
+function shouldSyncCollectionSymbol(component: Component): boolean {
+  const componentCollectionMap = component.collectionsStateMap;
+  if (!componentCollectionMap) return false;
+
+  const parentCollectionIds = Object.keys(componentCollectionMap);
+  if (!parentCollectionIds.length) return false;
+
+  const mainSymbolComponent = getSymbolMain(component);
+
+  if (!mainSymbolComponent || mainSymbolComponent === component) return false;
+
+  const mainSymbolCollectionMap = mainSymbolComponent.collectionsStateMap;
+  const mainSymbolParentIds = Object.keys(mainSymbolCollectionMap);
+
+  const isSubsetOfOriginalCollections = mainSymbolParentIds.every((id) => parentCollectionIds.includes(id));
+
+  return isSubsetOfOriginalCollections;
+}
+
+function getIdFromCollectionSymbol(component: Component): string {
+  const mainSymbolComponent = getSymbolMain(component);
+  return mainSymbolComponent ? mainSymbolComponent.getId() : '';
+}
+
+export function checkAndGetSyncableCollectionItemId(component: Component) {
+  const shouldSync = shouldSyncCollectionSymbol(component);
+  const itemId = shouldSync ? getIdFromCollectionSymbol(component) : null;
+  return { shouldSync, itemId };
+}

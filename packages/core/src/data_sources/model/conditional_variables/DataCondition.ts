@@ -1,15 +1,13 @@
 import { Model } from '../../../common';
 import EditorModel from '../../../editor/model/Editor';
-import DataVariable, { DataVariableProps } from '../DataVariable';
-import DataResolverListener from '../DataResolverListener';
-import { resolveDynamicValue, isDataVariable } from '../../utils';
-import { DataConditionEvaluator, ConditionProps } from './DataConditionEvaluator';
-import { AnyTypeOperation } from './operators/AnyTypeOperator';
-import { BooleanOperation } from './operators/BooleanOperator';
-import { NumberOperation } from './operators/NumberOperator';
-import { StringOperation } from './operators/StringOperator';
-import { isUndefined } from 'underscore';
+import { isDataVariable, valueOrResolve } from '../../utils';
 import { DataCollectionStateMap } from '../data_collection/types';
+import DataResolverListener from '../DataResolverListener';
+import DataVariable, { DataVariableProps } from '../DataVariable';
+import { ConditionProps, DataConditionEvaluator } from './DataConditionEvaluator';
+import { BooleanOperation } from './operators/BooleanOperator';
+import { StringOperation } from './operators/StringOperator';
+import { DataConditionSimpleOperation } from './types';
 
 export const DataConditionType = 'data-condition' as const;
 export const DataConditionEvaluationChangedEvent = 'data-condition-evaluation-changed';
@@ -17,7 +15,7 @@ export const DataConditionOutputChangedEvent = 'data-condition-output-changed';
 
 export interface ExpressionProps {
   left?: any;
-  operator?: AnyTypeOperation | StringOperation | NumberOperation;
+  operator?: DataConditionSimpleOperation;
   right?: any;
 }
 
@@ -32,6 +30,12 @@ export interface DataConditionProps {
   ifTrue?: any;
   ifFalse?: any;
 }
+
+type DataConditionOptions = {
+  em: EditorModel;
+  onValueChange?: () => void;
+  collectionsStateMap?: DataCollectionStateMap;
+};
 
 export class DataCondition extends Model<DataConditionProps> {
   private em: EditorModel;
@@ -53,13 +57,10 @@ export class DataCondition extends Model<DataConditionProps> {
     };
   }
 
-  constructor(props: DataConditionProps, opts: { em: EditorModel; onValueChange?: () => void }) {
-    if (isUndefined(props.condition)) {
-      opts.em.logError('No condition was provided to a conditional component.');
-    }
-
+  constructor(props: DataConditionProps, opts: DataConditionOptions) {
     super(props, opts);
     this.em = opts.em;
+    this.collectionsStateMap = opts.collectionsStateMap ?? {};
 
     const { condition = {} } = props;
     const instance = new DataConditionEvaluator({ condition }, { em: this.em });
@@ -80,7 +81,12 @@ export class DataCondition extends Model<DataConditionProps> {
     return this.get('ifFalse');
   }
 
+  getOperations() {
+    return this._conditionEvaluator.getOperations();
+  }
+
   setCondition(condition: ConditionProps) {
+    this.set('condition', condition);
     this._conditionEvaluator.set('condition', condition);
     this.trigger(DataConditionOutputChangedEvent, this.getDataValue());
   }
@@ -98,6 +104,8 @@ export class DataCondition extends Model<DataConditionProps> {
   }
 
   getDataValue(skipDynamicValueResolution: boolean = false): any {
+    const { em, collectionsStateMap } = this;
+    const options = { em, collectionsStateMap };
     const ifTrue = this.getIfTrue();
     const ifFalse = this.getIfFalse();
 
@@ -106,7 +114,7 @@ export class DataCondition extends Model<DataConditionProps> {
       return isConditionTrue ? ifTrue : ifFalse;
     }
 
-    return isConditionTrue ? resolveDynamicValue(ifTrue, this.em) : resolveDynamicValue(ifFalse, this.em);
+    return isConditionTrue ? valueOrResolve(ifTrue, options) : valueOrResolve(ifFalse, options);
   }
 
   resolvesFromCollection() {
@@ -115,6 +123,9 @@ export class DataCondition extends Model<DataConditionProps> {
 
   updateCollectionsStateMap(collectionsStateMap: DataCollectionStateMap) {
     this.collectionsStateMap = collectionsStateMap;
+    this._conditionEvaluator.updateCollectionStateMap(collectionsStateMap);
+    this.listenToDataVariables();
+    this.emitConditionEvaluationChange();
   }
 
   private listenToPropsChange() {

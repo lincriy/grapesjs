@@ -1,4 +1,4 @@
-import { Operator } from './BaseOperator';
+import { SimpleOperator } from './BaseOperator';
 
 export enum StringOperation {
   contains = 'contains',
@@ -9,9 +9,13 @@ export enum StringOperation {
   trimEquals = 'trimEquals',
 }
 
-export class StringOperator extends Operator<StringOperation> {
+export class StringOperator extends SimpleOperator<StringOperation> {
+  protected operationsEnum = StringOperation;
+
   evaluate(left: string, right: string) {
-    switch (this.operation) {
+    if (typeof left !== 'string') return false;
+
+    switch (this.operationString) {
       case StringOperation.contains:
         return left.includes(right);
       case StringOperation.startsWith:
@@ -19,14 +23,14 @@ export class StringOperator extends Operator<StringOperation> {
       case StringOperation.endsWith:
         return left.endsWith(right);
       case StringOperation.matchesRegex:
-        if (!right) this.em.logError('Regex pattern must be provided.');
-        return new RegExp(right).test(left);
+        if (!right) this.em.logWarning('Regex pattern must be provided.');
+        return new RegExp(right ?? '').test(left);
       case StringOperation.equalsIgnoreCase:
         return left.toLowerCase() === right.toLowerCase();
       case StringOperation.trimEquals:
         return left.trim() === right.trim();
       default:
-        this.em.logError(`Unsupported string operation: ${this.operation}`);
+        this.em.logWarning(`Unsupported string operation: ${this.operationString}`);
         return false;
     }
   }

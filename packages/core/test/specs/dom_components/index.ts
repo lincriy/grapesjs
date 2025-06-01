@@ -48,7 +48,6 @@ describe('DOM Components', () => {
     var setEm = () => {
       config.em = editorModel;
     };
-    const createSymbol = (component: Component) => obj.addSymbol(component)!;
 
     beforeEach(() => {
       const editor = new Editor({
@@ -122,7 +121,25 @@ describe('DOM Components', () => {
       expect(obj.getComponents().length).toEqual(2);
     });
 
-    test('Import propertly components and styles with the same ids', () => {
+    test('Import properly component with styles', () => {
+      const id = 'idtest';
+      const { Css, Components } = em;
+      const component = Components.addComponent(
+        `<div id="${id}" style="color:red; padding: 50px 100px">Text</div>`,
+      ) as Component;
+      expect(em.getHtml({ component })).toEqual(`<div id="${id}">Text</div>`);
+      expect(Components.getComponents().length).toEqual(1);
+      const firstComp = Components.getComponents().first();
+      firstComp.addStyle({ margin: '10px' });
+      expect(Css.getAll().length).toEqual(1);
+      expect(Css.getIdRule(id)!.getStyle()).toEqual({
+        color: 'red',
+        padding: '50px 100px',
+        margin: '10px',
+      });
+    });
+
+    test('Import properly components and styles with the same ids', () => {
       obj = em.Components;
       const cc = em.Css;
       const id = 'idtest';
@@ -404,6 +421,33 @@ describe('DOM Components', () => {
 
     afterEach(() => {
       editor.destroy();
+    });
+
+    test('Import components and styles with the same ids', () => {
+      const id = 'idtest';
+      const { Components, Css } = editor;
+      const component = Components.addComponent(`
+      <div id="${id}" style="color:red; padding: 50px 100px">Text</div>
+      <style>
+        #${id} {
+        background-color: red;
+        color: blue;
+       }
+      </style>`) as Component;
+      expect(component.getAttributes()).toEqual({ id });
+      expect(em.getHtml({ component })).toEqual(`<div id="${id}">Text</div>`);
+      expect(Components.getComponents().length).toEqual(1);
+      const firstComp = Components.getComponents().first();
+      firstComp.addStyle({ margin: '10px' });
+      firstComp.addStyle('width', '100px');
+      expect(Css.getAll().length).toEqual(1);
+      expect(Css.getIdRule(id)!.getStyle()).toEqual({
+        color: 'red',
+        'background-color': 'red',
+        padding: '50px 100px',
+        margin: '10px',
+        width: '100px',
+      });
     });
 
     describe('render components with asDocument', () => {

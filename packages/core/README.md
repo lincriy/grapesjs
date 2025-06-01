@@ -1,7 +1,5 @@
 # [GrapesJS](http://grapesjs.com)
 
-> ⚠️ **Warning:** We are in the process of moving to a monorepo.
-
 [![Build Status](https://github.com/GrapesJS/grapesjs/actions/workflows/quality.yml/badge.svg)](https://github.com/GrapesJS/grapesjs/actions)
 [![Chat](https://img.shields.io/badge/chat-discord-7289da.svg)](https://discord.gg/QAbgGXq)
 [![CDNJS](https://img.shields.io/cdnjs/v/grapesjs.svg)](https://cdnjs.com/libraries/grapesjs)

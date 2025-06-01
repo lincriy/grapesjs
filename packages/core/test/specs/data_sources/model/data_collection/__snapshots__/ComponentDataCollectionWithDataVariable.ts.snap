@@ -17,7 +17,7 @@ exports[`Collection variable components Serialization Saving: Collection with co
           "type": "data-variable",
         },
       ],
-      "type": "default",
+      "type": "data-collection-item",
     },
   ],
   "dataResolver": {
@@ -60,7 +60,7 @@ exports[`Collection variable components Serialization Saving: Collection with co
           "type": "data-variable",
         },
       ],
-      "type": "default",
+      "type": "data-collection-item",
     },
   ],
   "dataResolver": {
@@ -93,7 +93,7 @@ exports[`Collection variable components Serialization Serializion to JSON: Colle
           "type": "data-variable",
         },
       ],
-      "type": "default",
+      "type": "data-collection-item",
     },
   ],
   "dataResolver": {
@@ -136,7 +136,7 @@ exports[`Collection variable components Serialization Serializion to JSON: Colle
           "type": "data-variable",
         },
       ],
-      "type": "default",
+      "type": "data-collection-item",
     },
   ],
   "dataResolver": {

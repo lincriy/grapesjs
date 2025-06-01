@@ -1,20 +1,16 @@
-import { ModelDestroyOptions } from 'backbone';
-import { ObjectAny } from '../../common';
-import Component from '../../dom_components/model/Component';
-import { ComponentDefinition, ComponentOptions, ComponentProperties } from '../../dom_components/model/types';
+import { ComponentOptions, ComponentProperties } from '../../dom_components/model/types';
 import { toLowerCase } from '../../utils/mixins';
 import DataVariable, { DataVariableProps, DataVariableType } from './DataVariable';
+import { ComponentWithDataResolver } from './ComponentWithDataResolver';
+import { DataResolver } from '../types';
 import { DataCollectionStateMap } from './data_collection/types';
-import { keyCollectionsStateMap } from './data_collection/constants';
 
 export interface ComponentDataVariableProps extends ComponentProperties {
   type?: typeof DataVariableType;
   dataResolver?: DataVariableProps;
 }
 
-export default class ComponentDataVariable extends Component {
-  dataResolver: DataVariable;
-
+export default class ComponentDataVariable extends ComponentWithDataResolver<DataVariableProps> {
   get defaults() {
     return {
       // @ts-ignore
@@ -25,19 +21,16 @@ export default class ComponentDataVariable extends Component {
     };
   }
 
-  constructor(props: ComponentDataVariableProps, opt: ComponentOptions) {
-    super(props, opt);
-
-    this.dataResolver = new DataVariable(props.dataResolver ?? {}, {
-      ...opt,
-      collectionsStateMap: this.get(keyCollectionsStateMap),
-    });
-
-    this.listenToPropsChange();
-  }
-
   getPath() {
     return this.dataResolver.get('path');
+  }
+
+  getCollectionId() {
+    return this.dataResolver.get('collectionId');
+  }
+
+  getVariableType() {
+    return this.dataResolver.get('variableType');
   }
 
   getDefaultValue() {
@@ -48,12 +41,12 @@ export default class ComponentDataVariable extends Component {
     return this.dataResolver.getDataValue();
   }
 
-  getInnerHTML() {
-    return this.getDataValue();
+  resolvesFromCollection() {
+    return this.dataResolver.resolvesFromCollection();
   }
 
-  getCollectionsStateMap() {
-    return this.get(keyCollectionsStateMap) ?? {};
+  getInnerHTML() {
+    return this.getDataValue();
   }
 
   setPath(newPath: string) {
@@ -62,10 +55,6 @@ export default class ComponentDataVariable extends Component {
 
   setDefaultValue(newValue: string) {
     this.dataResolver.set('defaultValue', newValue);
-  }
-
-  setDataResolver(props: DataVariableProps) {
-    this.dataResolver.set(props);
   }
 
   /**
@@ -82,38 +71,11 @@ export default class ComponentDataVariable extends Component {
     });
   }
 
-  private listenToPropsChange() {
-    this.listenTo(
-      this.dataResolver,
-      'change',
-      (() => {
-        this.__changesUp({ m: this });
-      }).bind(this),
-    );
-    this.on('change:dataResolver', () => {
-      this.dataResolver.set(this.get('dataResolver'));
-    });
-    this.on(`change:${keyCollectionsStateMap}`, (_: Component, value: DataCollectionStateMap) => {
-      this.dataResolver.updateCollectionsStateMap(value);
-    });
-  }
-
-  toJSON(opts?: ObjectAny): ComponentDefinition {
-    const json = super.toJSON(opts);
-    const dataResolver: DataVariableProps = this.dataResolver.toJSON();
-    delete dataResolver.type;
-
-    return {
-      ...json,
-      dataResolver,
-    };
-  }
-
-  destroy(options?: ModelDestroyOptions | undefined): false | JQueryXHR {
-    this.stopListening(this.dataResolver, 'change');
-    this.off('change:dataResolver');
-    this.off(`change:${keyCollectionsStateMap}`);
-    return super.destroy(options);
+  protected createResolverInstance(
+    props: DataVariableProps,
+    options: ComponentOptions & { collectionsStateMap: DataCollectionStateMap },
+  ): DataResolver {
+    return new DataVariable(props, options);
   }
 
   static isComponent(el: HTMLElement) {

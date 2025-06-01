@@ -6,6 +6,7 @@ import type Component from '../../dom_components/model/Component';
 import type EditorModel from '../../editor/model/Editor';
 import { getComponentModel, getComponentView } from '../../utils/mixins';
 import type ComponentView from '../../dom_components/view/ComponentView';
+import type CommandAbstract from './CommandAbstract';
 
 const evName = 'dmode';
 
@@ -76,7 +77,7 @@ export default {
       guidesTarget: this.guidesTarget,
       guidesStatic: this.guidesStatic,
       guidesMatched: this.getGuidesMatched(guidesActive),
-      opts: this.opts,
+      command: this,
     };
   },
 
@@ -399,7 +400,7 @@ export default {
     this.guidesStatic = this.getGuidesStatic();
   },
 
-  onDrag() {
+  onDrag(event) {
     const { guidesTarget, opts } = this;
 
     this.updateGuides(guidesTarget);
@@ -407,6 +408,7 @@ export default {
     opts.guidesInfo && this.renderGuideInfo(guidesTarget?.filter((item) => item.active) ?? []);
     opts.onDrag?.(this._getDragData());
 
+    this.opts.event = event;
     this.em.trigger(`${evName}:move`, this.getEventOpts());
   },
 
@@ -664,7 +666,7 @@ export interface ComponentDragEventProps {
   /**
    * The options used for the drag event.
    */
-  opts: ComponentDragOpts;
+  command: ComponentDragProps & CommandAbstract<ComponentDragOpts>;
 }
 
 /**

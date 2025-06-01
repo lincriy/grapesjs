@@ -805,9 +805,9 @@ export default class StyleManager extends ItemManagerModule<
       props.forEach((prop) => {
         const isVisible = prop.__checkVisibility({
           target: lastTarget,
+          sector,
           component,
-          // @ts-ignore
-          sectors,
+          sectors: sectors.models,
         });
         prop.set('visible', isVisible);
       });

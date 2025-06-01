@@ -86,5 +86,23 @@ describe('Sectors', () => {
         expect(prop.isVisible()).toBe(isVisible);
       });
     });
+
+    test('Property with isVisible', () => {
+      const cmp = domc.addComponent({ tagName: 'span' });
+      em.setSelected(cmp);
+
+      s2.getProperty('color')?.set({
+        isVisible: ({ component }) => component?.tagName !== 'span',
+      });
+
+      sm.__upSel();
+
+      [s1, s2].forEach((sector) => expect(sector.isVisible()).toBe(true));
+
+      s2.getProperties().forEach((prop) => {
+        const isVisible = prop.getName() !== 'color';
+        expect(prop.isVisible()).toBe(isVisible);
+      });
+    });
   });
 });

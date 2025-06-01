@@ -117,7 +117,6 @@ export default class Dragger {
   el?: HTMLElement;
   guidesStatic: Guide[];
   guidesTarget: Guide[];
-  lockedAxis?: any;
   docs: Document[];
   trgX?: Guide;
   trgY?: Guide;
@@ -227,20 +226,6 @@ export default class Dragger {
       y: currentPos.y - startPointer.y + glDiff.y,
     };
     this.lastScrollDiff = resetPos();
-    let { lockedAxis } = this;
-
-    // @ts-ignore Lock one axis
-    if (ev.shiftKey) {
-      lockedAxis = !lockedAxis && this.detectAxisLock(delta.x, delta.y);
-    } else {
-      lockedAxis = null;
-    }
-
-    if (lockedAxis === 'x') {
-      delta.x = startPointer.x;
-    } else if (lockedAxis === 'y') {
-      delta.y = startPointer.y;
-    }
 
     const moveDelta = (delta: DraggerPosition) => {
       xyArr.forEach((co) => (delta[co] = delta[co] * result(opts, 'scale')));
@@ -250,7 +235,6 @@ export default class Dragger {
     };
     const deltaPre = { ...delta };
     this.currentPointer = currentPos;
-    this.lockedAxis = lockedAxis;
     this.lastScroll = this.getScrollInfo();
     moveDelta(delta);
 
@@ -364,7 +348,6 @@ export default class Dragger {
     const x = cancelled ? 0 : delta.x;
     const y = cancelled ? 0 : delta.y;
     this.toggleDrag();
-    this.lockedAxis = null;
     this.move(x, y, true);
     const { onEnd } = this.opts;
     isFunction(onEnd) && onEnd(ev, this, { cancelled });

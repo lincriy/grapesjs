@@ -3,7 +3,7 @@ import Component from '../../dom_components/model/Component';
 import Toolbar from '../../dom_components/model/Toolbar';
 import ToolbarView from '../../dom_components/view/ToolbarView';
 import { isDoc, isTaggableNode, isVisible, off, on } from '../../utils/dom';
-import { getComponentModel, getComponentView, getUnitFromValue, getViewEl, hasWin, isObject } from '../../utils/mixins';
+import { getComponentModel, getComponentView, getUnitFromValue, hasWin, isObject } from '../../utils/mixins';
 import { CommandObject } from './CommandAbstract';
 import { CanvasSpotBuiltInTypes } from '../../canvas/model/CanvasSpot';
 import { ResizerOptions } from '../../utils/Resizer';
@@ -96,7 +96,7 @@ export default {
     methods[method](listenToEl, 'scroll', this.onContainerChange);
     em[method](`component:toggled ${eventCmpUpdate} undo redo`, this.onSelect, this);
     em[method]('change:componentHovered', this.onHovered, this);
-    em[method]('component:resize styleable:change component:input', this.updateGlobalPos, this);
+    em[method](`${ComponentsEvents.resize} styleable:change component:input`, this.updateGlobalPos, this);
     em[method](`${eventCmpUpdate}:toolbar`, this._upToolbar, this);
     em[method]('frame:updated', this.onFrameUpdated, this);
     em[method]('canvas:updateTools', this.onFrameUpdated, this);
@@ -147,7 +147,7 @@ export default {
       component.views?.forEach((view) => {
         const el = view.el;
         const pos = this.getElementPos(el);
-        result = { el, pos, component, view: getViewEl(el) };
+        result = { el, pos, component, view };
 
         if (el.ownerDocument === this.currentDoc) {
           this.elHovered = result;
@@ -178,12 +178,12 @@ export default {
     const component = em.getSelected();
     const currentFrame = em.getCurrentFrame();
     const view = component && component.getView(currentFrame?.model);
-    let el = view && view.el;
+    let el = view?.el;
     let result = {};
 
     if (el && isVisible(el)) {
       const pos = this.getElementPos(el);
-      result = { el, pos, component, view: getViewEl(el) };
+      result = { el, pos, component, view };
     }
 
     this.elSelected = result;
@@ -400,8 +400,16 @@ export default {
     const spotTypeResize = CanvasSpotBuiltInTypes.Resize;
     const hasCustomResize = canvas.hasCustomSpot(spotTypeResize);
     canvas.removeSpots({ type: spotTypeResize });
+    const initEventOpts = {
+      component: model,
+      hasCustomResize,
+      resizable,
+    };
 
-    if (model && resizable) {
+    model && em.trigger(ComponentsEvents.resizeInit, initEventOpts);
+    const resizableResult = initEventOpts.resizable;
+
+    if (model && resizableResult) {
       canvas.addSpot({ type: spotTypeResize, component: model });
       const el = isElement(elem) ? elem : model.getEl();
       const {
@@ -410,7 +418,7 @@ export default {
         onEnd = () => {},
         updateTarget = () => {},
         ...resizableOpts
-      } = isObject(resizable) ? resizable : {};
+      } = isObject(resizableResult) ? resizableResult : {};
 
       if (hasCustomResize || !el || this.activeResizer) return;
 
@@ -466,19 +474,19 @@ export default {
             config.unitWidth = getUnitFromValue(currentWidth);
           }
           self.activeResizer = true;
-          editor.trigger('component:resize', { ...resizeEventOpts, type: 'start' });
+          editor.trigger(ComponentsEvents.resize, { ...resizeEventOpts, type: 'start' });
         },
 
         // Update all positioned elements (eg. component toolbar)
         onMove(ev) {
           onMove(ev);
-          editor.trigger('component:resize', { ...resizeEventOpts, type: 'move' });
+          editor.trigger(ComponentsEvents.resize, { ...resizeEventOpts, type: 'move' });
         },
 
         onEnd(ev, opts) {
           onEnd(ev, opts);
           toggleBodyClass('remove', ev, opts);
-          editor.trigger('component:resize', { ...resizeEventOpts, type: 'end' });
+          editor.trigger(ComponentsEvents.resize, { ...resizeEventOpts, type: 'end' });
           showOffsets = true;
           self.activeResizer = false;
         },

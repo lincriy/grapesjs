@@ -17,7 +17,7 @@ export default class CanvasSpots extends ModuleCollection<CanvasSpot> {
     const { em } = this;
     this.refreshDbn = debounce(() => this.refresh(), 0);
 
-    const evToRefreshDbn = `component:resize styleable:change component:input ${ComponentsEvents.update} frame:updated undo redo`;
+    const evToRefreshDbn = `${ComponentsEvents.resize} styleable:change component:input ${ComponentsEvents.update} frame:updated undo redo`;
     this.listenTo(em, evToRefreshDbn, () => this.refreshDbn());
   }
 

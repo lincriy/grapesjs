@@ -1,4 +1,6 @@
-import { Operator } from './BaseOperator';
+import { enumToArray } from '../../../utils';
+import { DataConditionSimpleOperation } from '../types';
+import { SimpleOperator } from './BaseOperator';
 
 export enum BooleanOperation {
   and = 'and',
@@ -6,11 +8,13 @@ export enum BooleanOperation {
   xor = 'xor',
 }
 
-export class BooleanOperator extends Operator<BooleanOperation> {
+export class BooleanOperator extends SimpleOperator<BooleanOperation> {
+  protected operationsEnum = BooleanOperation;
+
   evaluate(statements: boolean[]): boolean {
     if (!statements?.length) return false;
 
-    switch (this.operation) {
+    switch (this.operationString) {
       case BooleanOperation.and:
         return statements.every(Boolean);
       case BooleanOperation.or:
@@ -18,7 +22,7 @@ export class BooleanOperator extends Operator<BooleanOperation> {
       case BooleanOperation.xor:
         return statements.filter(Boolean).length === 1;
       default:
-        this.em.logError(`Unsupported boolean operation: ${this.operation}`);
+        this.em.logWarning(`Unsupported boolean operation: ${this.operationString}`);
         return false;
     }
   }

@@ -1,4 +1,4 @@
-import { isUndefined, isString, isArray, result, keys, each, includes, any } from 'underscore';
+import { isUndefined, isString, isArray, result, keys, each, includes, isFunction } from 'underscore';
 import { Model } from '../../common';
 import Component from '../../dom_components/model/Component';
 import EditorModel from '../../editor/model/Editor';
@@ -6,6 +6,14 @@ import { capitalize, camelCase, hasWin } from '../../utils/mixins';
 import Sector from './Sector';
 import PropertyComposite from './PropertyComposite';
 import { StyleProps } from '../../domain_abstract/model/StyleableModel';
+import { StyleTarget } from '..';
+
+export type IsVisibleFn = (props: {
+  property: Property;
+  sector: Sector;
+  target: StyleTarget;
+  component?: Component;
+}) => boolean | void;
 
 /** @private */
 export interface PropertyProps {
@@ -34,6 +42,17 @@ export interface PropertyProps {
   }) => any;
 
   /**
+   * Pass a custom function to check if the property should be visible.
+   *
+   * @example
+   * isVisible: ({ component }) => {
+   *  // Show the property only if the selected component is an image
+   *  return component?.is('image');
+   * }
+   */
+  isVisible?: IsVisibleFn;
+
+  /**
    * If true, the property will be forced to be full width
    */
   full?: boolean;
@@ -56,9 +75,9 @@ export interface PropertyProps {
    * Specifies dependency on other properties of the selected object.
    * Property is shown only when all conditions are matched.
    *
-   * example: { display: ['flex', 'block'], position: ['absolute'] };
-   * in this case the property is only shown when display is
-   * of value 'flex' or 'block' AND position is 'absolute'
+   * @example
+   * // in this case the property is only shown when display is of value 'flex' or 'block' AND position is 'absolute'
+   * requires: { display: ['flex', 'block'], position: ['absolute'] };
    */
   requires?: Record<string, any>;
 
@@ -81,6 +100,10 @@ export type OptionsUpdate = {
 
 export type OptionsStyle = { camelCase?: boolean };
 
+export interface PropertyPropsCustom extends PropertyProps {
+  [key: string]: any;
+}
+
 type PartialPropertyProps = Partial<PropertyProps>;
 
 /**
@@ -98,7 +121,7 @@ type PartialPropertyProps = Partial<PropertyProps>;
  * ```
  *
  */
-export default class Property<T extends Record<string, any> = PropertyProps> extends Model<T> {
+export default class Property<T extends PropertyPropsCustom = PropertyPropsCustom> extends Model<T> {
   em!: EditorModel;
   parent?: Property;
 
@@ -528,18 +551,30 @@ export default class Property<T extends Record<string, any> = PropertyProps> ext
     };
   }
 
-  __checkVisibility({ target, component, sectors }: { target: any; component?: Component; sectors?: Sector[] }) {
+  __checkVisibility({
+    target,
+    component,
+    sector,
+    sectors,
+  }: {
+    target: StyleTarget;
+    sector: Sector;
+    component?: Component;
+    sectors?: Sector[];
+  }) {
     const trg = component || target;
     if (!trg) return false;
 
     const id = this.getId();
     const property = this.getName();
-    const toRequire = this.get('toRequire');
-    const requires = this.get('requires');
-    const requiresParent = this.get('requiresParent');
+    const { requires, requiresParent, toRequire, isVisible } = this.attributes;
     const unstylable = trg.get('unstylable');
     const stylableReq = trg.get('stylable-require');
     let stylable = trg.get('stylable');
+
+    if (isFunction(isVisible)) {
+      return !!isVisible({ property: this, sector, target, component });
+    }
 
     // Stylable could also be an array indicating with which property
     // the target could be styled

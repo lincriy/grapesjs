@@ -1,6 +1,9 @@
 import { Component, DataRecord, DataSource, DataSourceManager, Editor } from '../../../../../src';
 import { DataVariableType } from '../../../../../src/data_sources/model/DataVariable';
-import { DataCollectionType } from '../../../../../src/data_sources/model/data_collection/constants';
+import {
+  DataCollectionItemType,
+  DataCollectionType,
+} from '../../../../../src/data_sources/model/data_collection/constants';
 import {
   ComponentDataCollectionProps,
   DataCollectionStateType,
@@ -123,7 +126,7 @@ describe('Collection variable components', () => {
       const collectionCmpDef = {
         type: DataCollectionType,
         components: {
-          type: 'default',
+          type: DataCollectionItemType,
           components: [
             {
               type: 'default',

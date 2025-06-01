@@ -17,6 +17,11 @@ import {
 import Dimension from './Dimension';
 import { SorterOptions } from './types';
 
+interface SorterSource<T> {
+  element?: HTMLElement;
+  dragSource?: DragSource<T>;
+}
+
 export default class Sorter<T, NodeType extends SortableTreeNode<T>> {
   em: EditorModel;
   treeClass: new (model: T, dragSource?: DragSource<T>) => NodeType;
@@ -70,7 +75,7 @@ export default class Sorter<T, NodeType extends SortableTreeNode<T>> {
    * Picking components to move
    * @param {HTMLElement[]} sources[]
    * */
-  startSort(sources: { element?: HTMLElement; dragSource?: DragSource<T> }[]) {
+  startSort(sources: SorterSource<T>[]) {
     const { sourceNodes, sourcesWithModel } = this.getSourceNodes(sources);
     this.sourceNodes = sourceNodes;
     this.dropLocationDeterminer.startSort(sourceNodes);
@@ -93,11 +98,7 @@ export default class Sorter<T, NodeType extends SortableTreeNode<T>> {
     this.em.trigger('sorter:drag:start', sources[0], sourcesWithModel[0]);
   }
 
-  validTarget(
-    targetEl: HTMLElement | undefined,
-    sources: { element?: HTMLElement; dragSource?: DragSource<T> }[],
-    index: number,
-  ): boolean {
+  validTarget(targetEl: HTMLElement | undefined, sources: SorterSource<T>[], index: number): boolean {
     if (!targetEl) return false;
     const targetModel = $(targetEl).data('model');
     if (!targetModel) return false;
@@ -108,12 +109,12 @@ export default class Sorter<T, NodeType extends SortableTreeNode<T>> {
     return canMove;
   }
 
-  private getSourceNodes(sources: { element?: HTMLElement; dragSource?: DragSource<T> }[]) {
+  private getSourceNodes(sources: SorterSource<T>[]) {
     const validSources = sources.filter((source) => !!source.dragSource || this.findValidSourceElement(source.element));
 
     const sourcesWithModel: { model: T; content?: any }[] = validSources.map((source) => {
       return {
-        model: $(source.element)?.data('model'),
+        model: source.dragSource?.model || $(source.element)?.data('model'),
         content: source.dragSource,
       };
     });
@@ -188,7 +189,7 @@ export default class Sorter<T, NodeType extends SortableTreeNode<T>> {
 
   /**
    * Finds the closest valid source element within the container context.
-  
+
    * @param sourceElement - The initial source element to check.
    * @returns The closest valid source element, or null if none is found.
    */

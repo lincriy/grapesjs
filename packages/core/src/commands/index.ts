@@ -152,7 +152,7 @@ export default class CommandsModule extends Module<CommandsConfig & { pStylePref
           return em.logWarning('The element is not draggable');
         }
 
-        const mode = target.get('dmode') || em.get('dmode');
+        const mode = opts.mode || target.get('dmode') || em.get('dmode');
         const hideTlb = () => em.stopDefault(defComOptions);
         const altMode = includes(modes, mode);
         targets.forEach((trg) => trg.trigger('disable', { fromMove: true }));

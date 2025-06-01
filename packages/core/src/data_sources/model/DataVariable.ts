@@ -11,6 +11,12 @@ export interface DataVariableProps {
   defaultValue?: string;
   collectionId?: string;
   variableType?: DataCollectionStateType;
+  asPlainText?: boolean;
+}
+
+interface DataVariableOptions {
+  em: EditorModel;
+  collectionsStateMap: DataCollectionStateMap;
 }
 
 export default class DataVariable extends Model<DataVariableProps> {
@@ -24,10 +30,11 @@ export default class DataVariable extends Model<DataVariableProps> {
       path: '',
       collectionId: undefined,
       variableType: undefined,
+      asPlainText: undefined,
     };
   }
 
-  constructor(props: DataVariableProps, options: { em: EditorModel; collectionsStateMap: DataCollectionStateMap }) {
+  constructor(props: DataVariableProps, options: DataVariableOptions) {
     super(props, options);
     this.em = options.em;
     this.collectionsStateMap = options.collectionsStateMap;
@@ -49,18 +56,6 @@ export default class DataVariable extends Model<DataVariableProps> {
     return this.get('variableType');
   }
 
-  getDataValue() {
-    if (this.resolvesFromCollection()) {
-      const valueOrDataVariableProps = this.resolveCollectionVariable();
-      if (!isDataVariable(valueOrDataVariableProps)) return valueOrDataVariableProps;
-      const { path = '' } = valueOrDataVariableProps;
-
-      return this.resolveDataSourcePath(path);
-    }
-
-    return this.resolveDataSourcePath(this.path);
-  }
-
   resolvesFromCollection(): boolean {
     return !!this.collectionId;
   }
@@ -73,11 +68,8 @@ export default class DataVariable extends Model<DataVariableProps> {
   getResolverPath(): string | false {
     if (this.resolvesFromCollection()) {
       const value = this.resolveCollectionVariable();
-      if (!isDataVariable(value)) return false;
-
-      return value.path ?? '';
+      return isDataVariable(value) ? (value.path ?? '') : false;
     }
-
     return this.path;
   }
 
@@ -87,42 +79,102 @@ export default class DataVariable extends Model<DataVariableProps> {
     const filteredJson = Object.fromEntries(
       Object.entries(json).filter(([key, value]) => value !== defaults[key as keyof DataVariableProps]),
     ) as Partial<DataVariableProps>;
-
-    return {
-      ...filteredJson,
-      type: DataVariableType,
-    };
+    return { ...filteredJson, type: DataVariableType };
   }
 
-  private resolveDataSourcePath(path: string) {
-    return this.em.DataSources.getValue(path, this.defaultValue);
+  getDataValue() {
+    const opts = {
+      em: this.em,
+      collectionsStateMap: this.collectionsStateMap,
+    };
+
+    return DataVariable.resolveDataResolver(
+      {
+        path: this.path,
+        defaultValue: this.defaultValue,
+        collectionId: this.collectionId,
+        variableType: this.variableType,
+      },
+      opts,
+    );
+  }
+
+  static resolveDataSourceVariable(
+    props: {
+      path?: string;
+      defaultValue?: string;
+    },
+    opts: {
+      em: EditorModel;
+    },
+  ) {
+    return opts.em.DataSources.getValue(props.path ?? '', props.defaultValue ?? '');
+  }
+
+  static resolveDataResolver(
+    props: {
+      path?: string;
+      defaultValue?: string;
+      collectionId?: string;
+      variableType?: DataCollectionStateType;
+    },
+    opts: DataVariableOptions,
+  ) {
+    if (props.collectionId) {
+      const value = DataVariable.resolveCollectionVariable(props, opts);
+      if (!isDataVariable(value)) return value;
+      return DataVariable.resolveDataSourceVariable(
+        { path: value.path ?? '', defaultValue: props.defaultValue ?? '' },
+        { em: opts.em },
+      );
+    }
+    return DataVariable.resolveDataSourceVariable(
+      { path: props.path ?? '', defaultValue: props.defaultValue ?? '' },
+      { em: opts.em },
+    );
   }
 
   private resolveCollectionVariable(): unknown {
-    const { collectionId = '', variableType, path, defaultValue = '' } = this.attributes;
-    if (!this.collectionsStateMap) return defaultValue;
+    const { em, collectionsStateMap } = this;
+    return DataVariable.resolveCollectionVariable(this.attributes, { em, collectionsStateMap });
+  }
 
-    const collectionItem = this.collectionsStateMap[collectionId];
+  static resolveCollectionVariable(
+    dataResolverProps: {
+      collectionId?: string;
+      variableType?: DataCollectionStateType;
+      path?: string;
+      defaultValue?: string;
+    },
+    opts: DataVariableOptions,
+  ): unknown {
+    const { collectionId = '', variableType, path, defaultValue = '' } = dataResolverProps;
+    const { em, collectionsStateMap } = opts;
+
+    if (!collectionsStateMap) return defaultValue;
+
+    const collectionItem = collectionsStateMap[collectionId];
     if (!collectionItem) return defaultValue;
 
     if (!variableType) {
-      this.em.logError(`Missing collection variable type for collection: ${collectionId}`);
+      em.logError(`Missing collection variable type for collection: ${collectionId}`);
       return defaultValue;
     }
 
     return variableType === 'currentItem'
-      ? this.resolveCurrentItem(collectionItem, path, collectionId)
+      ? DataVariable.resolveCurrentItem(collectionItem, path, collectionId, em)
       : collectionItem[variableType];
   }
 
-  private resolveCurrentItem(
+  private static resolveCurrentItem(
     collectionItem: DataCollectionState,
     path: string | undefined,
     collectionId: string,
+    em: EditorModel,
   ): unknown {
     const currentItem = collectionItem.currentItem;
     if (!currentItem) {
-      this.em.logError(`Current item is missing for collection: ${collectionId}`);
+      em.logError(`Current item is missing for collection: ${collectionId}`);
       return '';
     }
 
@@ -132,7 +184,7 @@ export default class DataVariable extends Model<DataVariableProps> {
     }
 
     if (path && !(currentItem as any)[path]) {
-      this.em.logError(`Path not found in current item: ${path} for collection: ${collectionId}`);
+      em.logError(`Path not found in current item: ${path} for collection: ${collectionId}`);
       return '';
     }
 

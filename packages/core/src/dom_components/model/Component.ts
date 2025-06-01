@@ -50,10 +50,12 @@ import {
   updateSymbolCls,
   updateSymbolComps,
   updateSymbolProps,
+  getSymbolsToUpdate,
 } from './SymbolUtils';
 import { ComponentDataResolverWatchers } from './ComponentDataResolverWatchers';
 import { DynamicWatchersOptions } from './ComponentResolverWatcher';
-import { keyIsCollectionItem, keyCollectionsStateMap } from '../../data_sources/model/data_collection/constants';
+import { DataCollectionStateMap } from '../../data_sources/model/data_collection/types';
+import { checkAndGetSyncableCollectionItemId } from '../../data_sources/utils';
 
 export interface IComponent extends ExtractMethods<Component> {}
 export interface SetAttrOptions extends SetOptions, UpdateStyleOptions, DynamicWatchersOptions {}
@@ -223,6 +225,10 @@ export default class Component extends StyleableModel<ComponentProperties> {
     return this.frame?.getPage();
   }
 
+  getType() {
+    return this.get('type') || 'default';
+  }
+
   preInit() {}
 
   /**
@@ -258,14 +264,12 @@ export default class Component extends StyleableModel<ComponentProperties> {
    * @private
    * @ts-ignore */
   collection!: Components;
-  collectionStateListeners: string[] = [];
   dataResolverWatchers: ComponentDataResolverWatchers;
+  collectionsStateMap: DataCollectionStateMap = {};
 
   constructor(props: ComponentProperties = {}, opt: ComponentOptions) {
-    const dataResolverWatchers = new ComponentDataResolverWatchers(undefined, {
-      em: opt.em,
-      collectionsStateMap: props[keyCollectionsStateMap],
-    });
+    const em = opt.em;
+    const dataResolverWatchers = new ComponentDataResolverWatchers(undefined, { em });
     super(props, {
       ...opt,
       dataResolverWatchers,
@@ -273,8 +277,7 @@ export default class Component extends StyleableModel<ComponentProperties> {
     dataResolverWatchers.bindComponent(this);
     this.dataResolverWatchers = dataResolverWatchers;
 
-    bindAll(this, '__upSymbProps', '__upSymbCls', '__upSymbComps');
-    const em = opt.em;
+    bindAll(this, '__upSymbProps', '__upSymbCls', '__upSymbComps', 'syncOnComponentChange');
 
     // Propagate properties from parent if indicated
     const parent = this.parent();
@@ -324,7 +327,7 @@ export default class Component extends StyleableModel<ComponentProperties> {
 
     // Register global updates for collection properties
     ['classes', 'traits', 'components'].forEach((name) => {
-      const events = `add remove ${name !== 'components' ? 'change' : ''}`;
+      const events = `add remove reset ${name !== 'components' ? 'change' : ''}`;
       this.listenTo(this.get(name), events.trim(), (...args) => this.emitUpdate(name, ...args));
     });
 
@@ -369,6 +372,50 @@ export default class Component extends StyleableModel<ComponentProperties> {
     return super.set(evaluatedProps, options);
   }
 
+  onCollectionsStateMapUpdate(collectionsStateMap: DataCollectionStateMap) {
+    this.collectionsStateMap = collectionsStateMap;
+    this.dataResolverWatchers.onCollectionsStateMapUpdate();
+
+    const cmps = this.components();
+    cmps.forEach((cmp) => cmp.onCollectionsStateMapUpdate(collectionsStateMap));
+  }
+
+  syncComponentsCollectionState() {
+    this.stopListening(this.components(), 'add remove reset', this.syncOnComponentChange);
+    this.listenTo(this.components(), 'add remove reset', this.syncOnComponentChange);
+    this.components().forEach((cmp) => cmp.syncComponentsCollectionState());
+  }
+
+  stopSyncComponentCollectionState() {
+    this.stopListening(this.components(), 'add remove reset', this.syncOnComponentChange);
+    this.collectionsStateMap = {};
+    this.components().forEach((cmp) => cmp.stopSyncComponentCollectionState());
+  }
+
+  syncOnComponentChange(model: Component, collection: Components, opts: any) {
+    if (!this.collectionsStateMap || !Object.keys(this.collectionsStateMap).length) return;
+    const options = opts || collection || {};
+
+    // Reset (in reset, 'model' is Collection, 'collection' is opts )
+    if (!opts) {
+      const modelsRemoved = options.previousModels || [];
+      modelsRemoved.forEach((cmp: Component) => cmp.stopSyncComponentCollectionState());
+      this.components().forEach((cmp) => {
+        cmp.syncComponentsCollectionState();
+        cmp.onCollectionsStateMapUpdate(this.collectionsStateMap);
+      });
+    } else if (options.add) {
+      // Add
+      const modelAdded = model;
+      modelAdded.syncComponentsCollectionState();
+      modelAdded.onCollectionsStateMapUpdate(this.collectionsStateMap);
+    } else {
+      // Remove
+      const modelRemoved = model;
+      modelRemoved.stopSyncComponentCollectionState();
+    }
+  }
+
   __postAdd(opts: { recursive?: boolean } = {}) {
     const { em } = this;
     const um = em?.UndoManager;
@@ -406,12 +453,34 @@ export default class Component extends StyleableModel<ComponentProperties> {
     const { em } = this;
     if (!em) return;
 
-    const event = 'component:styleUpdate';
     const styleKeys = keys(newStyles);
     const pros = { style: newStyles };
 
-    em.trigger(event, this, pros);
-    styleKeys.forEach((key) => em.trigger(`${event}:${key}`, this, pros));
+    this.emitWithEditor(ComponentsEvents.styleUpdate, this, pros);
+    styleKeys.forEach((key) => this.emitWithEditor(`${ComponentsEvents.styleUpdateProperty}${key}`, this, pros));
+
+    const collectionsStateMap = this.collectionsStateMap;
+    const allParentCollectionIds = Object.keys(collectionsStateMap);
+    if (!allParentCollectionIds.length) return;
+
+    const isAtInitialPosition = allParentCollectionIds.every(
+      (key) => collectionsStateMap[key].currentIndex === collectionsStateMap[key].startIndex,
+    );
+    if (!isAtInitialPosition) return;
+
+    const componentsToUpdate = getSymbolsToUpdate(this);
+    componentsToUpdate.forEach((component) => {
+      const componentCollectionsState = component.collectionsStateMap;
+      const componentParentCollectionIds = Object.keys(componentCollectionsState);
+
+      const isChildOfOriginalCollections = componentParentCollectionIds.every((id) =>
+        allParentCollectionIds.includes(id),
+      );
+
+      if (isChildOfOriginalCollections) {
+        component.addStyle(newStyles);
+      }
+    });
   }
 
   __changesUp(opts: any) {
@@ -449,6 +518,8 @@ export default class Component extends StyleableModel<ComponentProperties> {
   __upSymbComps(m: Component, c: Components, o: any) {
     updateSymbolComps(this, m, c, o);
   }
+
+  __onDestroy() {}
 
   /**
    * Check component's type
@@ -709,7 +780,7 @@ export default class Component extends StyleableModel<ComponentProperties> {
     const dynamicAttributes = this.dataResolverWatchers.getDynamicAttributesDefs();
     return this.setAttributes(
       {
-        ...this.getAttributes({ noClass: true }),
+        ...this.getAttributes({ noClass: true, noStyle: true }),
         ...dynamicAttributes,
         ...attrs,
       },
@@ -779,7 +850,8 @@ export default class Component extends StyleableModel<ComponentProperties> {
       const state = em.get('state');
       const cc = em.Css;
       const propOrig = this.getStyle(opts);
-      this.rule = cc.setIdRule(this.getId(), prop, { state, ...opts });
+      const newStyle = { ...propOrig, ...prop };
+      this.rule = cc.setIdRule(this.getId(), newStyle, { state, ...opts });
       const diff = shallowDiff(propOrig, prop);
       this.set('style', '', { silent: true });
       keys(diff).forEach((pr) => this.trigger(`change:style:${pr}`));
@@ -1594,12 +1666,10 @@ export default class Component extends StyleableModel<ComponentProperties> {
     delete obj.open; // used in Layers
     delete obj._undoexc;
     delete obj.delegate;
-    if (this.get(keyIsCollectionItem)) {
+    if (this.collectionsStateMap && Object.getOwnPropertyNames(this.collectionsStateMap).length > 0) {
       delete obj[keySymbol];
       delete obj[keySymbolOvrd];
       delete obj[keySymbols];
-      delete obj[keyCollectionsStateMap];
-      delete obj[keyIsCollectionItem];
       delete obj.attributes.id;
     }
 
@@ -1659,6 +1729,10 @@ export default class Component extends StyleableModel<ComponentProperties> {
    */
   getId(): string {
     let attrs = this.get('attributes') || {};
+    const { shouldSync, itemId } = checkAndGetSyncableCollectionItemId(this);
+    if (shouldSync) {
+      attrs.id = itemId;
+    }
     return attrs.id || this.ccid || this.cid;
   }
 
@@ -1831,7 +1905,9 @@ export default class Component extends StyleableModel<ComponentProperties> {
   }
 
   destroy(options?: ModelDestroyOptions | undefined): false | JQueryXHR {
+    this.stopListening(this.components(), 'add remove reset', this.syncOnComponentChange);
     this.dataResolverWatchers.destroy();
+    this.__onDestroy();
     return super.destroy(options);
   }
 

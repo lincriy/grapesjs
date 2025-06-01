@@ -54,6 +54,14 @@ export enum ComponentsEvents {
   updateInside = 'component:update-inside',
 
   /**
+   * @event `component:styleUpdate` Component related styles are updated, the component is passed as an argument to the callback.
+   * @example
+   * editor.on('component:styleUpdate', (component) => { ... });
+   */
+  styleUpdate = 'component:styleUpdate',
+  styleUpdateProperty = 'component:styleUpdate:',
+
+  /**
    * @event `component:select` Component selected.
    * @example
    * editor.on('component:select', (component) => { ... });
@@ -82,6 +90,26 @@ export enum ComponentsEvents {
    * editor.on('component:render', ({ component, view, el }) => { ... });
    */
   render = 'component:render',
+
+  /**
+   * @event `component:resize` Component resized. This event is triggered when the component is resized in the canvas.
+   * @example
+   * editor.on('component:resize', ({ component, type }) => {
+   *  // type can be 'start', 'move', or 'end'
+   * });
+   */
+  resize = 'component:resize',
+
+  /**
+   * @event `component:resize:init` Component resize init. This event allows you to control the resizer options dinamically.
+   * @example
+   * editor.on('component:resize:init', (opts) => {
+   *  if (opts.component.is('someType')) {
+   *   opts.resizable = true; // Update resizable options
+   *  }
+   * });
+   */
+  resizeInit = 'component:resize:init',
 
   /**
    * @event `symbol:main:add` Added new main symbol.

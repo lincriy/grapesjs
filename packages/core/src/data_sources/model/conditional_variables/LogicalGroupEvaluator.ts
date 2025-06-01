@@ -1,23 +1,21 @@
 import EditorModel from '../../../editor/model/Editor';
+import { DataCollectionStateMap } from '../data_collection/types';
 import { DataConditionEvaluator, ConditionProps } from './DataConditionEvaluator';
 import { BooleanOperator } from './operators/BooleanOperator';
 
 export class LogicalGroupEvaluator {
-  private em: EditorModel;
-
   constructor(
     private operator: BooleanOperator,
     private statements: ConditionProps[],
-    opts: { em: EditorModel },
-  ) {
-    this.em = opts.em;
-  }
+    private opts: { em: EditorModel; collectionsStateMap: DataCollectionStateMap },
+  ) {}
 
   evaluate(): boolean {
     const results = this.statements.map((statement) => {
-      const condition = new DataConditionEvaluator({ condition: statement }, { em: this.em });
+      const condition = new DataConditionEvaluator({ condition: statement }, this.opts);
       return condition.evaluate();
     });
+
     return this.operator.evaluate(results);
   }
 }

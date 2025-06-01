@@ -5,8 +5,12 @@ import DataVariable, { DataVariableProps } from './model/DataVariable';
 import { DataConditionProps, DataCondition } from './model/conditional_variables/DataCondition';
 
 export type DataResolver = DataVariable | DataCondition;
-
 export type DataResolverProps = DataVariableProps | DataConditionProps;
+export type ResolverFromProps<T extends DataResolverProps> = T extends DataVariableProps
+  ? DataVariable
+  : T extends DataConditionProps
+    ? DataCondition
+    : never;
 
 export interface DataRecordProps extends ObjectAny {
   /**
